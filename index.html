@@ -1,0 +1,608 @@
+
+
+<!DOCTYPE html>
+<html lang="en" >
+
+<head>
+
+  <title>Retro 3D Maze</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">  
+  
+<style>
+#maze_3d{
+  width: calc(100vw * .9);
+  height: calc(100vh * .9);
+}
+
+.wall{
+stroke: black;
+stroke-width:1;
+fill:white;
+}
+
+html {
+  background-image: url("https://www.emogic.com/cgi/3dmaze/retro2.jpg");
+  background-repeat: no-repeat;
+  background-size: 100% 100%;
+  min-height: 100%;
+}
+
+.centerme {
+  margin: 0;
+  position: absolute;  
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);  
+}
+
+.button {
+  border: black solid 1px;
+}
+
+#maze_table {
+  border-spacing: 0px;
+  background-color: white;
+}
+
+.wall {
+  background-color: black;
+  border: solid;
+  border-width: 1px;
+  padding: 0px;
+}
+
+.cell {
+   width: 25px;
+   height: 25px;
+}
+
+.vert {
+}
+
+.horiz {
+}
+
+.corner {
+}
+
+.thick{
+  width: 25px;
+  height: 25px;  
+}
+
+.thin{
+  width: 0px;
+  height: 0px;  
+}
+
+.incell {
+  background-image: url(https://www.emogic.com/cgi/3dmaze/run.gif);
+  background-repeat: no-repeat;
+  background-size: 100% 100%;
+}
+
+.exit {
+  background-image: url(https://www.emogic.com/cgi/3dmaze/exit.gif);
+  background-repeat: no-repeat;
+  background-size: 100% 100%;
+}
+</style>
+
+  
+  
+  
+  
+
+</head>
+
+<body translate="no" >
+  <html>
+<head>
+  <title>Retro 3D Maze</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  </head>
+  
+<body ONKEYUP="keyinput(event.keyCode);">
+  
+  <form>
+    <input TYPE="button" VALUE="2D" CLASS="button" onclick="Show_2D();">
+    <input TYPE="button" VALUE="3D" CLASS="button" onclick="Show_3D();">
+    </form>
+  
+  <svg id="maze_3d" class="centerme">
+>    
+  </svg>  
+    
+  <div id="maze_2d" class="centerme"></div>
+  
+  <div ID="start" class="centerme" align="center">
+    <form>
+      Maze Width: <input TYPE="TEXT" NAME="dimx" VALUE="11" SIZE="5" ID="dimx">
+      <br>
+      Maze Height: <input TYPE="TEXT" NAME="dimy" VALUE="11" SIZE="5" ID="dimy">
+      <br>
+      <input TYPE="button" NAME="Submit1" VALUE="Create Maze" CLASS="button" onclick="Make_Maze();">
+      <br>
+      <input type="checkbox" id="thick" name="thick" value="">
+      <label for="thick">Thick Walls</label><br>
+      <br>
+      The game your Great Grand Pappy played.
+      <br>
+      3D Maze / Rat Maze / DOS Maze / Retro Maze by:
+      <br>
+      <a HREF="https://www.emogic.com/" TARGET="_blank">Emogic</a>
+    </form>
+  </div>
+
+</body>
+
+</html>
+  
+  
+  
+      <script id="rendered-js" >
+var direction = {
+  N: {
+    x: 0,
+    y: -1
+  },
+  S: {
+    x: 0,
+    y: 1
+  },
+  E: {
+    x: 1,
+    y: 0
+  },
+  W: {
+    x: -1,
+    y: 0
+  }
+};
+
+var maze_shape = {}; //true wall part of maze , false not part of maze
+//does not include walls! so we need to double? and add a wall around the cells
+
+var maze = {}; //maze[x_y] = new Square(x,y);
+maze.width = 41; // we mean cells + walls, so must be odd!
+maze.height = 41;
+var wide_wall = false;
+
+var occupied_char = "X";
+var unoccupied_char = " ";
+
+var state = "TwoD"; //start
+
+var running_man = "1_1";
+var facing = ["E", "S", "W", "N"]; //val will be facing[0] and turn right we shift off and pop on, turn left pop off and shift on
+
+//------------misc functions
+
+function Get_NEW_X_Y(x, y, news, distance) {
+  // news NSE or W , distance 1 or 2
+  let dx = direction[news].x;
+  let dy = direction[news].y;
+  let x_new = x + dx * distance;
+  let y_new = y + dy * distance;
+  return x_new + "_" + y_new;
+}
+
+function State(x, y) {
+  let x_odd = x % 2;
+  let y_odd = y % 2;
+  let square_type = "";
+  let class_type = "";
+  if (x_odd && y_odd) {
+    //both x y odd is a cell
+    square_type = "cell";
+    class_type = "cell";
+  }
+  if (!x_odd && !y_odd) {
+    //both x y even is a wall , class corner
+    square_type = "wall";
+    class_type = "corner";
+  }
+  if (!x_odd && y_odd) {
+    //both x even y odd is a wall , class vert
+    square_type = "wall";
+    class_type = "vert";
+  }
+  if (x_odd && !y_odd) {
+    //both x odd y even is a wall , class horiz
+    square_type = "wall";
+    class_type = "horiz";
+  }
+  return { square_type: square_type, class_type: class_type };
+}
+
+function shuffle(a) {
+  var j, x, i;
+  for (i = a.length - 1; i > 0; i--) {
+    j = Math.floor(Math.random() * (i + 1));
+    x = a[i];
+    a[i] = a[j];
+    a[j] = x;
+  }
+  return a;
+}
+
+function X_Y_To_String(x, y) {
+  return x.toString() + "_" + y.toString();
+}
+
+function String_To_X_Y(x_y) {
+  //returns [x,y] int
+  if (typeof x_y === "undefined") {
+    return [0, 0];
+  }
+  let x, y;
+  [x, y] = x_y.split("_");
+  return [parseInt(x), parseInt(y)];
+}
+
+//--------------------- OOP classes
+
+function Square(x, y) {
+  //both cell and wall?
+  // Constructor
+  this.x = x;
+  this.y = y;
+  this.letter = occupied_char; //for a wall , and not visited if cell
+  this.is_a = State(x, y).square_type; //cell or wall based on x_y
+  this.class_type = State(x, y).class_type;
+
+  this.possible_directions = [];
+  this.Get_Possible_Directions = function () {
+    //find possible directions
+    this.possible_directions = [];
+    for (let direction of ["N", "E", "W", "S"]) {
+      let x_y_half_step = Get_NEW_X_Y(this.x, this.y, direction, 1);
+      let x_y_full_step = Get_NEW_X_Y(this.x, this.y, direction, 2);
+      if (typeof maze[x_y_full_step] == "undefined") {
+        continue;
+      } //ignore outide maze
+      if (maze[x_y_half_step].letter != occupied_char) {
+        continue;
+      } //is there a wall? no - skip
+      if (maze[x_y_full_step].letter != occupied_char) {
+        continue;
+      } //is there a full cell? no - skip
+      this.possible_directions.push(direction);
+    }
+    shuffle(this.possible_directions);
+    if (this.possible_directions.length > 0) {
+      return true;
+    } else {
+      return false;
+    }
+  };
+
+  this.CutMaze = function () {
+    this.letter = unoccupied_char; //open cell
+    if (this.is_a !== "cell") {
+      console.log(this.x + "_" + this.y + " is not a cell");
+    } //ensure this is a cell
+    while (this.Get_Possible_Directions()) {
+      //loop until no possible directions exist
+      let direction = this.possible_directions.pop();
+      let x_y_half_step = Get_NEW_X_Y(this.x, this.y, direction, 1);
+      let x_y_full_step = Get_NEW_X_Y(this.x, this.y, direction, 2);
+      maze[x_y_half_step].letter = unoccupied_char; //destroy wall
+      maze[x_y_full_step].CutMaze(); //next cell
+    }
+    return; //no more possible directions ? return
+  };
+
+  return this; //return object for new
+}
+
+function Show_2D() {
+  document.getElementById("maze_3d").style.display = "none"; //hide
+  document.getElementById("maze_2d").style.display = "block"; //show
+  state = "TwoD";
+}
+
+function Show_3D() {
+  document.getElementById("maze_2d").style.display = "none"; //hide
+  document.getElementById("maze_3d").style.display = "block"; //show
+  state = "ThreeD";
+  Draw_3D_Maze();
+}
+
+function Make_Maze() {
+  maze.width = parseInt(document.getElementById("dimx").value) * 2 + 1;
+  maze.height = parseInt(document.getElementById("dimy").value) * 2 + 1;
+
+  //prep maze: set all walls to occupied_char, set all spaces to occupied_char
+  for (let y = 0; y < maze.height; y++) {
+    for (let x = 0; x < maze.width; x++) {
+      let x_y = x + "_" + y;
+      maze[x_y] = new Square(x, y);
+    }
+  }
+
+  //make maze
+  maze["1_1"].CutMaze(); //start top left
+  //build html
+  var maze_html = '<table id="maze_table">';
+  for (let y = 0; y < maze.height; y++) {
+    maze_html = maze_html + "<tr>";
+    for (let x = 0; x < maze.width; x++) {
+      let x_y = x + "_" + y;
+      let wall_class = "";
+      if (maze[x_y].letter === occupied_char) {
+        if (document.getElementById("thick").checked) {
+          wall_class = "wall thick";
+        } else {
+          wall_class = "wall thin";
+        }
+      }
+      maze_html =
+        maze_html +
+        '<td id="' +
+        x_y +
+        '"' +
+        ' class="' +
+        wall_class +
+        " " +
+        maze[x_y].class_type +
+        '"></td>';
+    }
+    maze_html = maze_html + "</tr>";
+  }
+  maze_html = maze_html + "</table>";
+  document.getElementById("maze_2d").innerHTML = maze_html; //place html
+  document
+    .getElementById(maze.width - 2 + "_" + (maze.height - 2))
+    .classList.add("exit"); //exit sign
+  running_man = "1_1";
+  document.getElementById(running_man).classList.add("incell"); //place running man, you
+  document.getElementById("start").style.display = "none"; //hide start div
+  Show_2D();
+}
+
+//print maze ascii
+/*
+var output = '';
+for(var y=0 ; y < maze.height ; y++){
+  for(var x=0 ; x < maze.width ; x++){
+  let x_y = x + '_' + y;
+    output = output + maze[x_y].letter;
+  }
+  output = output + '\r\n';
+}
+document.getElementById("mz").value = output;
+*/
+
+function Try_To_Move(x, y, news) {
+  //try to move
+  let x_y_half_step = Get_NEW_X_Y(x, y, news, 1);
+  let x_y_full_step = Get_NEW_X_Y(x, y, news, 2);
+  if (typeof maze[x_y_full_step] === "undefined") {
+    return;
+  } //ignore outide maze
+  if(maze[x_y_half_step].letter == occupied_char){//thick & thin //is there a full cell in our way? yes - skip
+    return;
+  }
+  //we are moving!!!
+  document.getElementById(running_man).classList.remove("incell"); //remove running man 2d
+  if(document.getElementById("thick").checked == false){//thin walls
+    running_man = x_y_full_step;
+  }
+  else{
+    running_man = x_y_half_step;
+  } 
+  document.getElementById(running_man).classList.add("incell"); //remove running man 2d
+}
+
+//--------------keys
+
+function keyinput(keyCode) {
+  var [x, y] = String_To_X_Y(running_man);
+  var news = "";
+
+  if (keyCode == 37) {
+    //left
+    if (state == "ThreeD") {
+      //turn left
+      facing.unshift(facing.pop());
+    }
+    if (state == "TwoD") {
+      //move West
+      news = "W";
+    }
+  }
+  if (keyCode == 38) {
+    //up
+    if (state == "ThreeD") {
+      //step forward
+      news = facing[0];
+      Try_To_Move(x, y, news); //try to move
+    }
+    if (state == "TwoD") {
+      //move North
+      news = "N";
+    }
+  }
+
+  if (keyCode == 39) {
+    //right
+    if (state == "ThreeD") {
+      //turn right
+      facing.push(facing.shift());
+    }
+    if (state == "TwoD") {
+      //move East
+      news = "E";
+    }
+  }
+
+  if (keyCode == 40) {
+    //down
+    if (state == "ThreeD") {
+      //backup
+      news = facing[2];
+      Try_To_Move(x, y, news); //try to move
+      news = facing[0];
+    }
+    if (state == "TwoD") {
+      //move south
+      news = "S";
+    }
+  }
+
+  if (state == "TwoD") {
+    Try_To_Move(x, y, news); //try to move
+  }
+  
+  if (state == "ThreeD") {
+    Draw_3D_Maze();
+  }
+}
+
+function f(step) {
+  //function must output from 1 - 0. 1 divided by input
+  var output;
+ 
+  if(document.getElementById("thick").checked == false){//thin walls
+      if(step % 2 == 0){//even
+        step = step / 2;  
+      }
+      else{//odd
+        step = Math.floor(step / 2) + 1; 
+      }      
+  }
+  
+ //post processing for 0 - 1 step
+ //fix view in our square! step 0
+  //for input 1 we pretend we ar .9 (or some other value)
+  //for input 0 we pretend we are input 1
+  if (step === 1) {
+    return 0.9;
+  }
+  if (step === 0) {
+    step = 1;
+  }  
+ 
+  output = 1 / step;
+  return output;
+}
+
+function Draw_3D_Maze() {
+  var x,y;
+  var news = facing[0];
+  [x , y] = String_To_X_Y(running_man);
+  var xml_string = "";
+  var steps = 99;
+  var x1, y1, x2, y2, x3, y3, x4, y4;
+  var step_size = 2; 
+  if(document.getElementById("thick").checked){
+    step_size = 1;
+  }
+  for (var step = 0; step < steps; step = step + step_size) {
+    var dx = direction[news].x;
+    var dy = direction[news].y;
+    //center
+    var x_step = x + (step * dx);
+    var y_step = y + (step * dy);
+    
+    //test limits
+    if(x_center < 0){break;}
+    if(x_center > maze.width){break;}
+    if(y_center < 0){break;}
+    if(y_center > maze.height){break;}
+    
+    //right side
+    var right_news = facing[1];
+    var x_right = x_step  + direction[right_news].x;
+    var y_right = y_step  + direction[right_news].y;
+    [x1,y1,x2,y2,x3,y3,x4,y4] = Wall_Or_Hall('right' , step , x_right , y_right);
+    xml_string =
+      xml_string +
+      `<polygon points="${x1} ${y1} ${x2} ${y2} ${x3} ${y3} ${x4} ${y4}" class="wall"/> `;
+  
+    //left side
+    var left_news = facing[3];
+    var x_left = x_step  + direction[left_news].x;
+    var y_left = y_step  + direction[left_news].y;
+    [x1,y1,x2,y2,x3,y3,x4,y4] = Wall_Or_Hall('left' , step , x_left , y_left);
+    xml_string =
+      xml_string +
+      `<polygon points="${x1} ${y1} ${x2} ${y2} ${x3} ${y3} ${x4} ${y4}" class="wall"/> `;
+
+    var center_news = facing[0];
+    var x_center = x_step  + direction[center_news].x;
+    var y_center = y_step  + direction[center_news].y;
+    var x_y_center = x_center + '_' + y_center;
+    [x1,y1,x2,y2,x3,y3,x4,y4] = Wall_Or_Hall('center' , step , x_center , y_center);
+    xml_string =
+      xml_string +
+      `<polygon points="${x1} ${y1} ${x2} ${y2} ${x3} ${y3} ${x4} ${y4}" class="wall"/> `; 
+    
+    if(maze[x_y_center].letter === occupied_char){break;}//hit a wall done
+  }
+  
+  document.getElementById("maze_3d").innerHTML = xml_string;
+}
+
+function Wall_Or_Hall(position , step , x , y){//does left, right and center coordinates
+  var x_y = x + '_' + y;
+  var x1, y1, x2, y2, x3, y3, x4, y4;
+  var wall_or_hall;
+  var a = document.getElementById("maze_3d").getBoundingClientRect().width / 2; //a - adjacent
+  var o = document.getElementById("maze_3d").getBoundingClientRect().height / 2; //o - opposite h - hypotenuse
+  var x_offset = a;
+  var y_offset = o;
+  var left_right;
+  
+  if(maze[x_y].letter === occupied_char){
+    wall_or_hall = 'wall';  
+  }
+  else{
+    wall_or_hall = 'hall';    
+  }
+  
+  if(position === 'left'){
+    left_right = -1;  
+  }  
+  if(position === 'right'){
+    left_right = 1;
+  }  
+  y3 = -o * f(step + 1) + y_offset;
+  y4 = o * f(step + 1) + y_offset;     
+  if(wall_or_hall === 'wall'){//wall
+      y1 = o * f(step) + y_offset;
+      y2 = -o * f(step) + y_offset;      
+    }
+  else{//hall
+      y1 = y4;
+      y2 = y3;
+    }
+  x1 = (a * f(step)) * left_right + x_offset;
+  x2 = x1;
+  x3 = (a * f(step + 1)) * left_right + x_offset;
+  x4 = x3; 
+
+  if((wall_or_hall === 'wall') && (position === 'center')){
+    y3 = -o * f(step + 1) + y_offset;
+    y4 = o * f(step + 1) + y_offset; 
+    y1 = y4;
+    y2 = y3;
+    x1 = (a * f(step + 1)) + x_offset;
+    x2 = x1;
+    x3 = -(a * f(step + 1)) + x_offset;
+    x4 = x3;  
+  }
+  
+return [x1,y1,x2,y2,x3,y3,x4,y4];
+}
+
+//-------------- free range routines
+    </script>
+
+  
+
+</body>
+
+</html>
+ 
